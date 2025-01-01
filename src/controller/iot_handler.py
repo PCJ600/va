@@ -18,13 +18,14 @@ def dispatch_iot_task(task_data):
         task_id = task_data.get("taskId")
         task_type = task_data.get("taskType")
         if task_id is None:
-            logger.info("can't find task id, ignore it")
+            logger.info("can't find task id, ignored")
             return
-        # dispatch iot task to specified handler
+
+        # dispatch iot task to queue
         if task_type == "collectApplianceMetrics":
             TASK_Q.put(task_data)
         else:
-            logger.info("unknown task_type: %r", task_type)
+            logger.info("unknown task_type: %r, ignored", task_type)
     except:
         logger.error("dispatch iot task fail %r", traceback.format_exc())
 
@@ -71,11 +72,11 @@ class IOTHandler:
 
 def init_iot_connection():
     global iot_handler
+    init_host_conf()
     iot_handler = IOTHandler()
     iot_handler.create_iot_consumer()
 
 if __name__ == "__main__":
-    init_host_conf()
     init_iot_connection()
     try:
         while True:

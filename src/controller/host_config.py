@@ -27,6 +27,9 @@ class HostConfig:
             cfg = copy.deepcopy(self.conf)
         return cfg
 
+    def updateHostConfig(self, host_conf):
+        with self.lock:
+            self.conf = host_conf
 
 g_host_conf = None
 
