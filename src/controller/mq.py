@@ -1,21 +1,8 @@
 import pika
 import time
-import logging
 
-# 创建一个logger对象
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)  # 设置日志级别
- 
-# 创建一个处理器，用于将日志输出到控制台
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.DEBUG)  # 设置处理器的日志级别
-  
-# 创建一个日志格式器，并将其添加到处理器中
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-console_handler.setFormatter(formatter)
-   
-# 将处理器添加到logger对象中
-logger.addHandler(console_handler)
+from log import get_logger
+logger = get_logger(__name__)
 
 class RabbitMQConsumer:
     def __init__(self, host='localhost', port=5672, username='admin', password='V2SG@xdr', queue_name='', exchange_name='', routing_key='', consume_callback=None):
@@ -55,14 +42,7 @@ class RabbitMQConsumer:
                 logger.error(f"An unexpected error occurred: {e}")
                 self.stopping = True  # Stop trying to reconnect if an unexpected error occurs
 
-    def set_consume_callback(self, cb):
-        self.consume_callback = cb
-
     def consume(self):
-        """Consume messages from the queue."""
-        def callback(ch, method, properties, body):
-            logger.info("Received message: %r, %r, %r, %r", ch, method, properties, body)
-
         self.channel.basic_consume(queue=self.queue_name, on_message_callback=self.consume_callback, auto_ack=True)
 
         try:
@@ -70,6 +50,7 @@ class RabbitMQConsumer:
         except pika.exceptions.AMQPConnectionError:
             logger.error("Lost connection to RabbitMQ. Attempting to reconnect...")
             self.connection.close()
+            # TODO: async notify, not connect at once
             self.connect()
 
     def stop(self):
