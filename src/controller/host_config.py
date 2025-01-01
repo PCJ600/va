@@ -19,6 +19,8 @@ class HostConfig:
         conf["iot_port"] = 5672
         conf["iot_username"] = 'admin'
         conf["iot_password"] = 'V2SG@xdr'
+        conf["token"] = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJjaWQiOiI3N2ExYzk1Ni0xYzhkLTQ3ZmItODAzNi1jOTcwYTRmMmVlNzMiLCJkb21haW4iOiJwZXRlci5iYWNrZW5kLmNvbSIsImV4cCI6MTc2NjM5NzAyOH0.VkMdIjKRQONyy246gylDfUcqE_Be6PTAI4onMesZXRYa3YlnaFib6nOheS2Gze0EPV5EUXYShPoGBVkRdK-42GQCUn0Kw5bFHeRgpde8t2YFxdcNT4gpYwMiKUcUE2EdNI7yyC55kjIpRekjDqsScYzIjktmlSx78vOI9Xaj494jzik5bNpLmNFnVbrkAkKk-oMELEWC4solg-2vY4Gsup2GJIga7SBdP-aIrvGabyv1J6IgxKsUu7rmZyBVSk-Ekg1oig7h2-8qUiQOk6ep8Nam4Dm2KKqwWouWoUm20N6Gy0WEz0-eyez45jFt9UCynz33rv703omtTVGZodmQkA"
+        conf["backend_host"] = 'peter.backend.com'
         self.conf = conf
 
     def getHostConfig(self):
@@ -38,6 +40,9 @@ def init_host_conf():
     g_host_conf = HostConfig()
 
 def get_host_conf():
+    global g_host_conf
+    if g_host_conf is None:
+        init_host_conf()
     return g_host_conf.getHostConfig()
 
 if __name__ == '__main__':

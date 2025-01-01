@@ -72,7 +72,6 @@ class IOTHandler:
 
 def init_iot_connection():
     global iot_handler
-    init_host_conf()
     iot_handler = IOTHandler()
     iot_handler.create_iot_consumer()
 
