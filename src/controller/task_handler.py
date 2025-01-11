@@ -1,4 +1,3 @@
-from iot_handler import TASK_Q
 from queue import Queue
 import threading
 import traceback
@@ -6,13 +5,61 @@ import psutil
 import socket
 import os
 import time
+from expiring_dict import ExpiringDict
 
 from http_response import response_iot_task
 from host_config import get_host_conf
 from log import get_logger
 logger = get_logger(__name__)
 
-IOT_RESP_URL='/va/{va_id}/task/'
+IOT_COMMON_TASK_Q = Queue()
+IOT_COLLECT_TASK_Q = Queue()
+IOT_DUPLICATE_TASK_Q = Queue()
+
+class TaskCache:
+    def __init__(self):
+        self.tasks = ExpiringDict(120)
+        self.lock = threading.Lock()
+
+    def add_task(self, task_id):
+        with self.lock:
+            now = int(time.time())
+            self.tasks[task_id] = {"ts": now}
+
+    def duplicate_task(self, task_id):
+        duplicate = False
+        with self.lock:
+            if task_id in self.tasks:
+                duplicate = True
+        return duplicate
+
+TASKS = TaskCache()
+
+def dispatch_iot_task(task_data):
+    try:
+        task_id = task_data.get("taskId")
+        task_type = task_data.get("taskType")
+        if task_id is None:
+            logger.info("can't find task id, ignored")
+            return
+
+        if not TASKS.duplicate_task(task_id):
+            logger.info("dispatch iot task %r", task_id)
+            TASKS.add_task(task_id)
+        else:
+            logger.info("duplicate iot task %r", task_id)
+            pass
+
+        # dispatch iot task to queue
+        if task_type == "upgradeAppliance":
+            IOT_COMMON_TASK_Q.put(task_data)
+        elif task_type == "collectApplianceMetrics":
+            IOT_COLLECT_TASK_Q.put(task_data)
+        else:
+            logger.info("unknown task_type: %r, ignored", task_type)
+    except:
+        logger.error("dispatch iot task fail %r", traceback.format_exc())
+
 
 def get_ipv4():
     hostname = socket.gethostname()
@@ -28,8 +75,13 @@ def get_ipv4():
     return local_ip if '.' in local_ip and not local_ip.startswith('127.') else '127.0.0.1'
  
 
+
+def upgrade_appliance(task_data):
+    logger.info("handle upgrade appliance task: %r", task_data)
+
+
 def collect_va_metrics(task_data):
-    logger.info("receive collect va metrics task: %r", task_data)
+    logger.info("handle collect va metrics task: %r", task_data)
 
     va_info = {}
     try:
@@ -51,30 +103,74 @@ def collect_va_metrics(task_data):
             "errorMessage": "success",
             "taskResult": va_info
         }
-
-        host_conf = get_host_conf()
-        host = host_conf.get("backend_host")
-        path = IOT_RESP_URL.format(va_id=host_conf.get("appliance_id"))
-        token = host_conf.get("token")
-        ret = response_iot_task(host, path, 'POST', token, payload)
+        ret = response_iot_task(payload)
         if ret < 0:
             logger.error("response collect va metrics task failed")
 
     except:
         logger.error("collect va metrics exception: %r", traceback.format_exc())
 
-def start_iot_task_consumer_thread():
+
+
+def iot_common_task():
     while True:
-        task_data = TASK_Q.get()
+        task_data = IOT_COMMON_TASK_Q.get()
+        task_type = task_data.get("taskType")
+        try:
+            if task_type == "upgradeAppliance":
+                upgrade_appliance(task_data)
+            else:
+                logger.error("iot common task failed, invalid task_type: %r", task_type)
+        except:
+            logger.error("iot common task faild: %r", traceback.format_exc())
+
+
+def iot_collect_task():
+    while True:
+        task_data = IOT_COLLECT_TASK_Q.get()
         task_type = task_data.get("taskType")
         try:
             if task_type == "collectApplianceMetrics":
                 collect_va_metrics(task_data)
             else:
-                logger.error("task type %r invalid, can not handle this", task_type)
+                logger.error("iot collect task failed, invalid task_type: %r", task_type)
         except:
-            logger.error("iot task consumer exception %r", traceback.format_exc())
+            logger.error("iot collect task failed: %r", traceback.format_exc())
 
+
+def iot_duplicate_task():
+    while True:
+        task_data = IOT_DUPLICATE_TASK_Q.get()
+        task_id = task_data.get("taskId")
+        try:
+            payload = {
+                "taskId": task_id,
+                "taskStatus": "ignored",
+                "errorMessage": "ignored",
+                "taskResult": {}
+            }
+            ret = response_iot_task(payload)
+            if ret < 0:
+                logger.error("response iot duplicate task failed")
+
+        except:
+            logger.error("iot duplicate task failed: %r", traceback.format_exc())
+
+
+def start_iot_task_consumer_threads():
+    thread_list = []
+    t1 = threading.Thread(target=iot_common_task, name='iot_common_task', daemon=True)
+    t1.start()
+    thread_list.append(t1)
+    t2 = threading.Thread(target=iot_collect_task, name="iot_collect_task", daemon=True)
+    t2.start()
+    thread_list.append(t2)
+    t3 = threading.Thread(target=iot_duplicate_task, name="iot_duplicate_task", daemon=True)
+    t3.start()
+    thread_list.append(t3)
+
+    for t in thread_list:
+        t.join()
 
 if __name__ == '__main__':
     task_data = {"taskId": "0"}

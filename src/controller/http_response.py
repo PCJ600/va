@@ -2,16 +2,17 @@ import requests
 import logging
 import traceback
 from urllib.parse import urljoin
+from host_config import get_host_conf
 
 from log import get_logger
 logger = get_logger(__name__)
 
+IOT_RESP_URL='/va/{va_id}/tasks/'
 
 def do_http_request(host, path, method, token, **kwargs):
     if not host or not path or not method or not token:
         logger.error("request parameters err %r", (host, path, method))
         return None
-
     try:
         session = requests.session()
         session.headers.update({
@@ -26,7 +27,7 @@ def do_http_request(host, path, method, token, **kwargs):
         logger.error("request error %r", traceback.format_exc())
         return None
 
-def response_iot_task(host, path, method, token, payload):
+def do_http_request_with_payload(host, path, method, token, payload):
     if payload is None:
         r = do_http_request(host, path, method, token, verify=False, json=payload)
     else:
@@ -37,6 +38,14 @@ def response_iot_task(host, path, method, token, payload):
     else:
         logger.error("iot task response %r", r)
         return 1
+
+
+def response_iot_task(payload):
+    host_conf = get_host_conf()
+    host = host_conf.get("backend_host")
+    path = IOT_RESP_URL.format(va_id=host_conf.get("appliance_id"))
+    token = host_conf.get("token")
+    return response_iot_task(host, path, 'POST', token, payload)
 
 
 if __name__ == '__main__':

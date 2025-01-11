@@ -7,28 +7,11 @@ import json
 from mq import RabbitMQConsumer
 from http_response import response_iot_task
 from host_config import init_host_conf, get_host_conf
+from task_handler import dispatch_iot_task
 from log import get_logger
 logger = get_logger(__name__)
 
 iot_handler = None
-TASK_Q = Queue()
-
-def dispatch_iot_task(task_data):
-    try:
-        task_id = task_data.get("taskId")
-        task_type = task_data.get("taskType")
-        if task_id is None:
-            logger.info("can't find task id, ignored")
-            return
-
-        # dispatch iot task to queue
-        if task_type == "collectApplianceMetrics":
-            TASK_Q.put(task_data)
-        else:
-            logger.info("unknown task_type: %r, ignored", task_type)
-    except:
-        logger.error("dispatch iot task fail %r", traceback.format_exc())
-
 
 def consume_iot_task_callback(ch, method, properties, body):
     try:
