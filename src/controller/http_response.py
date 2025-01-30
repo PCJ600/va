@@ -28,6 +28,7 @@ def do_http_request(host, path, method, token, **kwargs):
         logger.error("request error %r", traceback.format_exc())
         return None
 
+# return 0 if resp OK, else return 1
 def do_http_request_with_payload(host, path, method, token, payload):
     if payload:
         r = do_http_request(host, path, method, token, verify=False, json=payload)
@@ -41,12 +42,23 @@ def do_http_request_with_payload(host, path, method, token, payload):
         return 1
 
 
-def response_iot_task(payload):
+def __response_iot_task(payload):
     host_conf = get_host_conf()
     host = host_conf.get("backend_host")
     path = IOT_RESP_URL.format(va_id=host_conf.get("appliance_id"))
     token = host_conf.get("token")
     return do_http_request_with_payload(host, path, 'POST', token, payload)
+
+def response_iot_task(task_id, task_status="success", error_message="", task_result={}):
+    payload = {
+        "task_id": task_id,
+        "task_status": task_status,
+        "error_message": error_message,
+        "task_result": task_result
+    }
+    if __response_iot_task(payload) < 0:
+        logger.error("resp %r failed", task_id)
+
 
 urllib3.disable_warnings()
 
