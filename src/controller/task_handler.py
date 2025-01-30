@@ -35,23 +35,23 @@ class TaskCache:
 
 TASKS = TaskCache()
 
+
 def dispatch_iot_task(task_data):
     try:
-        task_id = task_data.get("taskId")
-        task_type = task_data.get("taskType")
+        task_id = task_data.get("task_id")
+        task_type = task_data.get("task_type")
         if task_id is None:
             logger.info("can't find task id, ignored")
             return
 
-        if not TASKS.duplicate_task(task_id):
-            logger.info("dispatch iot task %r", task_id)
-            TASKS.add_task(task_id)
-        else:
+        if TASKS.duplicate_task(task_id):
             logger.info("duplicate iot task %r", task_id)
-            pass
+            return
 
         # dispatch iot task to queue
-        if task_type == "upgradeAppliance":
+        logger.info("dispatch iot task %r", task_id)
+        TASKS.add_task(task_id)
+        if task_type in {"upgradeAppliance", "configureService"}:
             IOT_COMMON_TASK_Q.put(task_data)
         elif task_type == "collectApplianceMetrics":
             IOT_COLLECT_TASK_Q.put(task_data)
@@ -76,8 +76,37 @@ def get_ipv4():
  
 
 
+g_service_settings = {}
+def configure_service(task_data):
+    try:
+        logger.info("configure service task_data: %r", task_data)
+        svc_code = task_data.get('service_code')
+        settings_dict = task_data.get('body')
+        if svc_code not in g_service_settings:
+            g_service_settings[svc_code] = settings_dict
+        else:
+            for key, val in settings_dict.items():
+                g_service_settings[svc_code][key] = val
+
+        # response
+        task_id = task_data.get("task_id")
+        payload = {
+            "task_id": task_id,
+            "task_status": "success",
+            "error_message": "",
+            "task_result": {}
+        }
+        if response_iot_task(payload) < 0:
+            logger.error("response collect va metrics task failed")
+    except:
+        logger.error("configure service task fail %r", traceback.format_exc())
+
+
+
 def upgrade_appliance(task_data):
     logger.info("handle upgrade appliance task: %r", task_data)
+
+    
 
 
 def collect_va_metrics(task_data):
@@ -96,12 +125,12 @@ def collect_va_metrics(task_data):
         logger.info("response va metrics: %r", va_info)
 
         # response metric data to backend
-        task_id = task_data.get("taskId")
+        task_id = task_data.get("task_id")
         payload = {
-            "taskId": task_id,
-            "taskStatus": "success",
-            "errorMessage": "success",
-            "taskResult": va_info
+            "task_id": task_id,
+            "task_status": "success",
+            "error_message": "success",
+            "task_result": va_info
         }
         ret = response_iot_task(payload)
         if ret < 0:
@@ -115,10 +144,12 @@ def collect_va_metrics(task_data):
 def iot_common_task():
     while True:
         task_data = IOT_COMMON_TASK_Q.get()
-        task_type = task_data.get("taskType")
+        task_type = task_data.get("task_type")
         try:
             if task_type == "upgradeAppliance":
                 upgrade_appliance(task_data)
+            elif task_type == "configureService":
+                configure_service(task_data)
             else:
                 logger.error("iot common task failed, invalid task_type: %r", task_type)
         except:
@@ -128,7 +159,7 @@ def iot_common_task():
 def iot_collect_task():
     while True:
         task_data = IOT_COLLECT_TASK_Q.get()
-        task_type = task_data.get("taskType")
+        task_type = task_data.get("task_type")
         try:
             if task_type == "collectApplianceMetrics":
                 collect_va_metrics(task_data)
@@ -141,13 +172,13 @@ def iot_collect_task():
 def iot_duplicate_task():
     while True:
         task_data = IOT_DUPLICATE_TASK_Q.get()
-        task_id = task_data.get("taskId")
+        task_id = task_data.get("task_id")
         try:
             payload = {
-                "taskId": task_id,
-                "taskStatus": "ignored",
-                "errorMessage": "ignored",
-                "taskResult": {}
+                "task_id": task_id,
+                "task_status": "ignored",
+                "error_message": "ignored",
+                "task_result": {}
             }
             ret = response_iot_task(payload)
             if ret < 0:
@@ -173,5 +204,5 @@ def start_iot_task_consumer_threads():
         t.join()
 
 if __name__ == '__main__':
-    task_data = {"taskId": "0"}
+    task_data = {"task_id": "0"}
     collect_va_metrics(task_data)
